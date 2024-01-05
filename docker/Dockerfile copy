@@ -1,0 +1,32 @@
+# Stage 1: Build Go application
+FROM golang:1.19 AS build
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/.
+
+# Stage 2: Build Python environment and copy dependencies
+FROM python:3.8 AS python-build
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Stage 3: Final image
+FROM alpine:3.14
+WORKDIR /app
+
+# Copy only the necessary files from the Go build
+COPY --from=python-build /usr/local/bin/python /usr/local/bin/python
+COPY --from=python-build /usr/local/bin/python* /usr/local/bin/
+COPY --from=python-build /usr/local/lib/python3.8/site-packages /usr/local/lib/python3.8/site-packages
+COPY --from=build /app/main .
+COPY files ./files
+
+# Set the PYTHON environment variable
+ENV PYTHON=/usr/local/bin/python
+
+
+# Set the entry point command to run the compiled Go application
+CMD ["./main"]
